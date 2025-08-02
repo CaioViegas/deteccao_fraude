@@ -1,11 +1,13 @@
 import sys
 import kagglehub
 import shutil
+import pandas as pd
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from configs.paths import get_project_paths
+from src.utils.dataset_describer import describe_dataset
 
 def download_dataset(slug: str, file_extension: str = ".csv") -> list[Path]:
     """Downloads a dataset from Kaggle and saves it to the project's 'raw' directory.
@@ -32,8 +34,11 @@ def download_dataset(slug: str, file_extension: str = ".csv") -> list[Path]:
         saved_files.append(dest_file)
         print(f"File saved: {dest_file}")
 
-    if not saved_files:
-        print(f"No file with extension '{file_extension}' found in {dataset_path}")
+        try:
+            df = pd.read_csv(dest_file)
+            describe_dataset(df, name=file.stem)
+        except Exception as e:
+            print(f"Error reading file: {e}")
 
     return saved_files
 
