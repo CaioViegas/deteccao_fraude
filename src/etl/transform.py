@@ -1,6 +1,7 @@
 import sys
 import pandas as pd
 import numpy as np
+from load import save_data
 from pathlib import Path
 from sklearn.impute import KNNImputer
 
@@ -157,9 +158,9 @@ def run_transform():
     df_transformed = transformer.transform()
     transformer.report_issues()
 
-    output_path = transformed_dir / f"transformed_{file_path.name}"
-    df_transformed.to_csv(output_path, index=False)
-    print(f"\nTransformed file saved: {output_path}")
+    base_filename = f"transformed_{file_path.stem}"
+    save_data(df_transformed, save_dir=transformed_dir, base_filename=base_filename)
+    print(f"\nTransformed file saved")
 
 if __name__ == "__main__":    
     run_transform()
