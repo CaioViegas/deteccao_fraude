@@ -2,6 +2,7 @@ import sys
 import kagglehub
 import shutil
 import pandas as pd
+import logging
 from pathlib import Path
 from load import save_data
 
@@ -10,43 +11,64 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from configs.paths import get_project_paths
 from src.utils.dataset_describer import describe_dataset
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 def download_dataset(slug: str, file_extension: str = ".csv") -> list[Path]:
     """
-    Downloads a Kaggle dataset and saves it in the 'raw' directory.
-
-    It will download the dataset with the given slug, copy all files with the given extension to the 'raw' directory and
-    save a parquet and SQLite version of each file.
+    Downloads a dataset from Kaggle and saves the files to the 'data/raw' directory.
 
     Args:
-        slug (str): The slug of the dataset to be downloaded.
-        file_extension (str): The extension of the files to be processed. Defaults to ".csv".
+        slug: The slug of the dataset to download.
+        file_extension: The file extension of the files to download (default: .csv).
+
     Returns:
-        list[Path]: A list of Paths to the saved files.
+        A list of Paths pointing to the saved files.
     """
     paths = get_project_paths()
     raw_dir = paths['RAW']
     raw_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"Downloading dataset '{slug}'...")
-    dataset_path = kagglehub.dataset_download(slug)
-    dataset_path = Path(dataset_path)
-
     saved_files = []
 
-    for file in dataset_path.glob(f"*{file_extension}"):
-        dest_file = raw_dir / file.name
-        shutil.copy(file, dest_file)
-        saved_files.append(dest_file)
-        print(f"File saved: {dest_file}")
+    try:
+        logger.info(f"Downloading dataset '{slug}'...")
+        dataset_path = Path(kagglehub.dataset_download(slug))
 
-        try:
-            df = pd.read_csv(dest_file)
-            describe_dataset(df, name=file.stem)
-            save_data(df, save_dir=raw_dir, base_filename=file.stem)
-        except Exception as e:
-            print(f"Error processing file '{file.name}': {e}")
+        if not dataset_path.exists():
+            raise FileNotFoundError(f"Kaggle download failed: {dataset_path} not found.")
+        
+        for file in dataset_path.glob(f"*{file_extension}"):
+            dest_file = raw_dir / file.name
+
+            shutil.copy(file, dest_file)
+            saved_files.append(dest_file)
+            logger.info(f"File saved: {dest_file}")
+
+            try:
+                df = pd.read_csv(dest_file)
+                if df.empty:
+                    logger.warning(f"Empty DataFrame: {file.name}")
+                    continue
+                    
+                describe_dataset(df, name=file.stem)
+                save_data(df, save_dir=raw_dir, base_filename=file.stem)
+
+            except pd.errors.EmptyDataError as e:
+                logger.error(f"Empty CSV: {file.name} - {e}")
+
+            except Exception as e:
+                logger.error(f"Error processing {file.name}: {e}", exc_info=True)
+
+    except Exception as e:
+        logger.error(f"Download failed for '{slug}': {e}", exc_info=True)
+
+    finally:
+        if 'dataset_path' in locals() and dataset_path.exists():
+            shutil.rmtree(dataset_path, ignore_errors=True)
+            logger.info(f"Cleaned up temp dir: {dataset_path}")
 
     return saved_files
+
 
 if __name__ == "__main__":
     download_dataset("anselll09/membership-groceries-user-profile", file_extension=".csv")
