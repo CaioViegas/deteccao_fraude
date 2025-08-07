@@ -1,0 +1,57 @@
+
+========================================
+EDA FOR DATASET: DATASET
+========================================
+
+[1] SHAPE:
+ Metric  Count
+   Rows   9537
+Columns     11
+
+[2] DATA TYPES:
+   Type  Count
+  int64      5
+ object      4
+float64      2
+
+[3] MISSING VALUES:
+         Column  Missing Values
+encryption_used            1966
+
+[4] NUMERIC STATISTICS:
+                      count   mean    std   min    25%    50%     75%     max
+network_packet_size 9537.00 500.43 198.38 64.00 365.00 499.00  635.00 1285.00
+login_attempts      9537.00   4.03   1.96  1.00   3.00   4.00    5.00   13.00
+session_duration    9537.00 792.75 786.56  0.50 231.95 556.28 1105.38 7190.39
+ip_reputation_score 9537.00   0.33   0.18  0.00   0.19   0.31    0.45    0.92
+failed_logins       9537.00   1.52   1.03  0.00   1.00   1.00    2.00    5.00
+unusual_time_access 9537.00   0.15   0.36  0.00   0.00   0.00    0.00    1.00
+attack_detected     9537.00   0.45   0.50  0.00   0.00   0.00    1.00    1.00
+
+[5] CATEGORICAL STATISTICS:
+         Column  Unique Values Most Common  Freq of Most Common  Cardinality Ratio
+     session_id           9537   SID_00001                    1           1.000000
+  protocol_type              3         TCP                 6624           0.000315
+encryption_used              2         AES                 4706           0.000210
+   browser_type              5      Chrome                 5137           0.000524
+
+[!] Warning: High-cardinality categorical columns: session_id
+
+[6] TOP 3 CATEGORIES PER COLUMN (proportions):
+                 SID_00001  SID_00002  SID_00003  TCP  UDP  ICMP  AES  DES  Chrome  Firefox  Edge
+session_id            0.00       0.00       0.00 0.00 0.00  0.00 0.00 0.00    0.00     0.00  0.00
+protocol_type         0.00       0.00       0.00 0.69 0.25  0.05 0.00 0.00    0.00     0.00  0.00
+encryption_used       0.00       0.00       0.00 0.00 0.00  0.00 0.62 0.38    0.00     0.00  0.00
+browser_type          0.00       0.00       0.00 0.00 0.00  0.00 0.00 0.00    0.54     0.20  0.15
+
+[6] OUTLIER ANALYSIS:
+             column  outliers  percentage  min_value   max_value    classification                     action
+network_packet_size        37        0.39  64.000000 1285.000000 Rare but possible            Keep or segment
+     login_attempts       206        2.16   1.000000   13.000000 Rare but possible            Keep or segment
+   session_duration       418        4.38   0.500000 7190.392213 Rare but possible            Keep or segment
+ip_reputation_score        21        0.22   0.002497    0.924299 Rare but possible            Keep or segment
+      failed_logins       323        3.39   0.000000    5.000000 Rare but possible            Keep or segment
+unusual_time_access      1430       14.99   0.000000    1.000000    May harm model Transform/use robust model
+    attack_detected         0        0.00   0.000000    1.000000       No outliers           No action needed
+
+========================================

@@ -152,15 +152,17 @@ def describe_dataset(df: pd.DataFrame, name: str = "dataset", display: bool = Tr
         _log("\n[6] TOP 3 CATEGORIES PER COLUMN (proportions):")
         _log(results["top_categories"].to_string(float_format="%.2f"))
 
-    outliers = detect_outliers(df)
-    results["outliers"] = outliers
+    if df.select_dtypes(include=np.number).shape[1] > 0:
+        outliers = detect_outliers(df)
+        results["outliers"] = outliers
 
-    if display:
-        print("\n[7] OUTLIER ANALYSIS:")
-        if outliers.empty:
-            print("No outliers detected.")
-        else:
+        if display:
+            print("\n[6] OUTLIER ANALYSIS:")
             print(outliers.to_string(index=False))
+
+        if save_to_file:
+            output_lines.append("\n[6] OUTLIER ANALYSIS:")
+            output_lines.append(outliers.to_string(index=False))
 
     if df.select_dtypes(include=np.number).shape[1] > 1:
         corr = df.select_dtypes(include=np.number).corr().abs()
