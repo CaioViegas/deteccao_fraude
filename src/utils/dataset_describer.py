@@ -1,115 +1,204 @@
 import pandas as pd
 import numpy as np
+import logging
+import sys
+from pathlib import Path
 from scipy.stats import zscore
+from typing import Dict, List, Optional
 
-def analyze_outliers(df, rare_threshold=0.05, z_thresh=3):
-    results = []
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-    for col in df.select_dtypes(include=["float64", "int64"]).columns:
-        series = df[col]
-        
-        z_scores = zscore(series)
-        z_outliers = np.where(np.abs(z_scores) > z_thresh)[0]
+from configs.paths import get_project_paths
 
-        Q1 = series.quantile(0.25)
-        Q3 = series.quantile(0.75)
-        IQR = Q3 - Q1
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
-        iqr_outliers = series[(series < lower_bound) | (series > upper_bound)]
+logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-        total_outliers = np.unique(np.concatenate((z_outliers, iqr_outliers.index)))
-        num_outliers = len(total_outliers)
-        pct_outliers = num_outliers / len(series)
-
-        if series.min() < 0 and col in ['use_count', 'average_basket_size', 'membership_fee']:  
-            classification = "Obvious error"  
-            action = "Fix or remove"  
-        elif pct_outliers == 0:  
-            classification = "No outliers detected"  
-            action = "No action needed"  
-        elif pct_outliers < rare_threshold:  
-            classification = "Rare but possible"  
-            action = "Keep or segment"  
-        elif pct_outliers >= rare_threshold:  
-            classification = "May harm model"  
-            action = "Transform or use robust model"  
-        else:  
-            classification = "Unclassified"  
-            action = "Manual review required"  
-
-        results.append({  
-            "column": col,  
-            "outliers_detected": num_outliers,  
-            "percentage": round(pct_outliers * 100, 2),  
-            "classification": classification,  
-            "suggested_action": action  
-        })  
-
-    return pd.DataFrame(results)
-
-
-def describe_dataset(df: pd.DataFrame, name: str='dataset'):
+def detect_outliers(df: pd.DataFrame, numeric_cols: Optional[List[str]] = None, rare_threshold: float = 0.05, z_thresh: float = 3, error_cols: Optional[Dict[str, float]] = None) -> pd.DataFrame:
     """
-    Prints an exploratory data analysis (EDA) summary of a given Pandas DataFrame.
+    Detects outliers in a given Pandas DataFrame for specified numeric columns and returns a summary DataFrame.
 
     Parameters
     ----------
-    df : Pandas DataFrame
-        The DataFrame to be analyzed.
-    name : str, optional
-        The name to be printed as header for the EDA summary. Defaults to 'dataset'.
+    df : pd.DataFrame
+        The DataFrame to analyze for outliers.
+    numeric_cols : Optional[List[str]], optional
+        A list of column names to check for outliers. If None, all numeric columns are considered.
+    rare_threshold : float, optional
+        The threshold for classifying an outlier as rare but possible. Defaults to 0.05.
+    z_thresh : float, optional
+        The Z-score threshold for detecting outliers. Defaults to 3.
+    error_cols : Optional[Dict[str, float]], optional
+        A dictionary specifying minimum acceptable values for certain columns, used to identify obvious errors. Defaults to None.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with columns for each checked column, indicating the number of outliers, percentage of outliers,
+        minimum and maximum values, classification of the column, and recommended action.
     """
-    print(f"\nEDA for {name}:")
-    print("-" * 30)
+    if numeric_cols is None:
+        numeric_cols = df.select_dtypes(include=["float64", "int64"]).columns.tolist()
+    
+    if error_cols is None:
+        error_cols = {"use_count": 0, "average_basket_size": 0, "membership_fee": 0}  
 
-    print(f"Dimensions: {df.shape[0]:,} linhas × {df.shape[1]} colunas")
-    print(f"Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+    results = []
+    
+    for col in numeric_cols:
+        series = df[col].dropna()
+        if len(series) == 0:
+            logger.warning(f"Coluna '{col}' vazia após remoção de NaN.")
+            continue
+        
+        z_scores = np.abs(zscore(series))
+        Q1, Q3 = series.quantile([0.25, 0.75])
+        IQR = Q3 - Q1
+        bounds = (Q1 - 1.5 * IQR, Q3 + 1.5 * IQR)
+        
+        outlier_mask = ((z_scores > z_thresh) | (series < bounds[0]) | (series > bounds[1]))
+        num_outliers = outlier_mask.sum()
+        pct_outliers = num_outliers / len(series)
 
-    print("\nData types:")
-    print(df.dtypes.value_counts())
+        if col in error_cols and series.min() < error_cols[col]:
+            classification, action = "Obvious error", "Fix or remove"
 
-    print("\nColumn names:")
-    print(df.columns)
+        elif pct_outliers == 0:
+            classification, action = "No outliers", "No action needed"
 
-    print("\nFirst 5 rows:")
-    print(df.head())
+        elif pct_outliers < rare_threshold:
+            classification, action = "Rare but possible", "Keep or segment"
+            
+        else:
+            classification, action = "May harm model", "Transform/use robust model"
 
-    print("\nLast 5 rows:")
-    print(df.tail())
+        results.append({
+            "column": col,
+            "outliers": num_outliers,
+            "percentage": round(pct_outliers * 100, 2),
+            "min_value": series.min(),
+            "max_value": series.max(),
+            "classification": classification,
+            "action": action
+        })
+    
+    return pd.DataFrame(results)
 
-    print("\nMissing values:")
+
+def describe_dataset(df: pd.DataFrame, name: str = "dataset", display: bool = True, return_results: bool = True, save_to_file: bool = True) -> Optional[Dict[str, pd.DataFrame]]:
+    results = {}
+    output_lines = []
+
+    def _log(text):
+        if display:
+            print(text)
+        output_lines.append(text)
+
+    _log(f"\n{'='*40}")
+    _log(f"EDA FOR DATASET: {name.upper()}")
+    _log(f"{'='*40}")
+
+    shape_info = pd.DataFrame({
+        "Metric": ["Rows", "Columns"],
+        "Count": [df.shape[0], df.shape[1]]
+    })
+    results["shape"] = shape_info
+    _log("\n[1] SHAPE:")
+    _log(shape_info.to_string(index=False))
+
+    dtypes = df.dtypes.value_counts().reset_index()
+    dtypes.columns = ["Type", "Count"]
+    results["dtypes"] = dtypes
+    _log("\n[2] DATA TYPES:")
+    _log(dtypes.to_string(index=False))
+
     nulls = df.isnull().sum()
-    nulls = nulls[nulls > 0].sort_values(ascending=False)
-    if nulls.empty:
-        print("No missing values found.")
+    missing = nulls[nulls > 0].sort_values(ascending=False).reset_index()
+    missing.columns = ["Column", "Missing Values"]
+    results["missing"] = missing
+    _log("\n[3] MISSING VALUES:")
+    if missing.empty:
+        _log("No missing values found")
     else:
-        print(nulls.to_frame(name='Nulls').assign(Pct=lambda x: (x['Nulls'] / len(df) * 100).round(2)))
+        _log(missing.to_string(index=False))
 
-    print("\nNumeric summary:")
-    print(df.describe(include=[np.number]).T[["mean", "std", "min", "25%", "50%", "75%", "max"]])
+    if df.select_dtypes(include=np.number).shape[1] > 0:
+        num_stats = df.describe(include=[np.number]).T
+        results["numeric_stats"] = num_stats
+        _log("\n[4] NUMERIC STATISTICS:")
+        _log(num_stats.to_string(float_format="%.2f"))
 
-    print("\nCategorical columns with cardinality:")
     cat_cols = df.select_dtypes(include=["object", "category"]).columns
-    for col in cat_cols:
-        n_unique = df[col].nunique()
-        top = df[col].value_counts().index[0]
-        freq = df[col].value_counts().iloc[0]
-        print(f" - {col}: {n_unique} categories (more common: '{top}' -> {freq})")
+    if len(cat_cols) > 0:
+        cat_stats = pd.DataFrame({
+            "Column": cat_cols,
+            "Unique Values": [df[col].nunique() for col in cat_cols],
+            "Most Common": [df[col].mode()[0] if not df[col].mode().empty else None for col in cat_cols],
+            "Freq of Most Common": [df[col].value_counts().iloc[0] if not df[col].value_counts().empty else 0 for col in cat_cols],
+        })
+        cat_stats["Cardinality Ratio"] = cat_stats["Unique Values"] / df.shape[0]
+        results["categorical"] = cat_stats
+        _log("\n[5] CATEGORICAL STATISTICS:")
+        _log(cat_stats.to_string(index=False))
 
-    print("\nOutlier verifications:")
-    analyze_outliers(df)
+        high_card_cols = cat_stats[cat_stats["Cardinality Ratio"] > 0.5]["Column"].tolist()
+        if high_card_cols:
+            _log(f"\n[!] Warning: High-cardinality categorical columns: {', '.join(high_card_cols)}")
 
-    print("\nOther verifications:")
-    constant_cols = [col for col in df.columns if df[col].nunique(dropna=False) == 1]
+        cat_distributions = {
+            col: df[col].value_counts(normalize=True).head(3).to_dict()
+            for col in cat_cols
+        }
+        results["top_categories"] = pd.DataFrame.from_dict(cat_distributions, orient='index').fillna(0)
+        _log("\n[6] TOP 3 CATEGORIES PER COLUMN (proportions):")
+        _log(results["top_categories"].to_string(float_format="%.2f"))
+
+    outliers = detect_outliers(df)
+    results["outliers"] = outliers
+
+    if display:
+        print("\n[7] OUTLIER ANALYSIS:")
+        if outliers.empty:
+            print("No outliers detected.")
+        else:
+            print(outliers.to_string(index=False))
+
+    if df.select_dtypes(include=np.number).shape[1] > 1:
+        corr = df.select_dtypes(include=np.number).corr().abs()
+        upper_tri = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+        strong_corrs = upper_tri.stack().reset_index()
+        strong_corrs.columns = ["Var1", "Var2", "Correlation"]
+        strong_corrs = strong_corrs[strong_corrs["Correlation"] >= 0.8]
+        if not strong_corrs.empty:
+            results["strong_correlations"] = strong_corrs
+            _log("\n[8] STRONG CORRELATIONS (>= 0.8):")
+            _log(strong_corrs.to_string(index=False))
+
+    issues = []
+    constant_cols = df.columns[df.nunique(dropna=False) == 1].tolist()
     if constant_cols:
-        print(f" - Constant columns: {constant_cols}")
-    duplicate_cols = df.columns[df.columns.duplicated()].tolist()
-    if duplicate_cols:
-        print(f" - Duplicate columns: {duplicate_cols}")
+        issues.append({"Issue": "Constant Columns", "Details": ", ".join(constant_cols)})
+
     duplicate_rows = df.duplicated().sum()
     if duplicate_rows > 0:
-        print(f" - Duplicate rows: {duplicate_rows}")
+        issues.append({"Issue": "Duplicate Rows", "Count": duplicate_rows})
 
-    print("-" * 30)
-    
+    if issues:
+        issues_df = pd.DataFrame(issues)
+        results["data_issues"] = issues_df
+        _log("\n[9] DATA ISSUES:")
+        _log(issues_df.to_string(index=False))
+
+    _log(f"\n{'='*40}\n")
+
+    if save_to_file:
+        paths = get_project_paths()
+        log_dir = paths['LOGS']
+        out_path = Path(log_dir) / f"{name}_eda_summary.txt"
+        out_path.parent.mkdir(parents=True, exist_ok=True)  
+
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(output_lines))
+
+        print(f"[i] Summary saved to file: {out_path.resolve()}")
+
+    return results if return_results else None

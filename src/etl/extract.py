@@ -50,7 +50,7 @@ def download_dataset(slug: str, file_extension: str = ".csv") -> list[Path]:
                     logger.warning(f"Empty DataFrame: {file.name}")
                     continue
                     
-                describe_dataset(df, name=file.stem)
+                describe_dataset(df)
                 save_data(df, save_dir=raw_dir, base_filename=file.stem)
 
             except pd.errors.EmptyDataError as e:
