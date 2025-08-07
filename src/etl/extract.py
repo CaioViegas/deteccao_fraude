@@ -49,4 +49,4 @@ def download_dataset(slug: str, file_extension: str = ".csv") -> list[Path]:
     return saved_files
 
 if __name__ == "__main__":
-    download_dataset("samayashar/fraud-detection-transactions-dataset", file_extension=".csv")
+    download_dataset("anselll09/membership-groceries-user-profile", file_extension=".csv")

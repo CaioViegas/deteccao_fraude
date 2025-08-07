@@ -163,27 +163,61 @@ class OutlierHandler:
                 self.outliers_detected = pd.concat([self.outliers_detected, self.df[mask]])
                 self.issues.append(f"{count} outliers detected in column '{col}' using IQR")
 
-    def segment_extreme_values(self, column: str, upper_threshold: float):
+    def segment_extreme_values(self, thresholds: dict[str, float] | float):
         """
-        Segments extreme values in a specified column by marking them in a new column.
+        Segments extreme values in all numerical columns using given thresholds.
 
-        This method identifies values in the specified column that are greater than the given upper threshold. 
-        For each identified extreme value, a new binary column is created to indicate the presence of extreme values, 
-        and a log entry is recorded with the count of extreme values detected.
+        If a single float is passed, it is used as the threshold for all columns.
+        If a dictionary is passed, it should map column names to their specific thresholds.
 
         Args:
-            column (str): The name of the column to check for extreme values.
-            upper_threshold (float): The threshold above which values are considered extreme.
+            thresholds (dict | float): Threshold(s) for determining extreme values.
 
         Updates:
-            - Adds a binary column indicating extreme values for the specified column.
-            - Logs the count of extreme values detected in the issues list.
+            - Adds binary columns like 'is_extreme_<col>' for flagged extremes.
+            - Logs number of extremes detected per column in self.issues.
         """
-        mask = self.df[column] > upper_threshold
-        count = mask.sum()
-        if count > 0:
-            self.df[f"is_extreme_{column}"] = mask.astype(int)
-            self.issues.append(f"{count} extreme values detected in column '{column}'")
+        numeric_cols = self.df.select_dtypes(include=np.number).columns
+
+        for col in numeric_cols:
+            if isinstance(thresholds, dict):
+                upper = thresholds.get(col)
+                if upper is None:
+                    continue  
+            else:
+                upper = thresholds
+
+            mask = self.df[col] > upper
+            count = mask.sum()
+
+            if count > 0:
+                self.df[f"is_extreme_{col}"] = mask.astype(int)
+                self.issues.append(f"{count} extreme values detected in column '{col}'")
+
+
+    def generate_iqr_thresholds(self, multiplier=1.5) -> dict:
+        """
+        Generates a dictionary of thresholds for each numerical column in the DataFrame using the IQR method.
+
+        The threshold for each column is calculated as the 3rd quartile (Q3) plus the multiplier times the Interquartile Range (IQR).
+
+        Args:
+            multiplier (float, optional): The multiplier for the IQR. Defaults to 1.5.
+
+        Returns:
+            dict: A dictionary mapping column names to their respective thresholds.
+        """
+        thresholds = {}
+        numeric_cols = self.df.select_dtypes(include=np.number).columns
+
+        for col in numeric_cols:
+            q1 = self.df[col].quantile(0.25)
+            q3 = self.df[col].quantile(0.75)
+            iqr = q3 - q1
+            thresholds[col] = q3 + multiplier * iqr
+
+        return thresholds
+
 
     def export_log(self, filename='outliers.csv'):
         """
@@ -250,7 +284,8 @@ def run_transform():
 
     outlier_handler = OutlierHandler(df, outlier_log=logs_dir)
     outlier_handler.detect_iqr_outliers()
-    outlier_handler.segment_extreme_values(column='Transaction_Amount', upper_threshold=1000)  # exemplo específico
+    thresholds = outlier_handler.generate_iqr_thresholds()
+    outlier_handler.segment_extreme_values(thresholds=thresholds)  
     outlier_handler.export_log()
     outlier_handler.report()
 
