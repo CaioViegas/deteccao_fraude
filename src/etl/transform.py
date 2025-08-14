@@ -293,29 +293,32 @@ class DataTransformer:
 
     def handle_outliers(self) -> 'DataTransformer':
         """
-        Identifies and handles outliers in numeric columns of the DataFrame.
+        Handles outliers in the DataFrame by capping them using the IQR method and
+        adding a general outlier flag column. Additionally, it applies a log
+        transformation to the 'session_duration' column.
 
-        For each numeric column, calculates the interquartile range (IQR) and caps values 
-        outside the 1.5 * IQR range to the respective lower or upper bounds. Additionally, 
-        marks outliers by adding a binary indicator column for each numeric column. 
-
-        Specifically for the 'session_duration' column, performs a log transformation to 
-        normalize the data distribution.
+        Outliers are capped by computing the interquartile range (IQR) for each numeric
+        column and setting values outside 1.5 times the IQR to the nearest bound. The
+        outlier flag is set to 1 if any column contains an outlier.
 
         Returns:
             DataTransformer: The instance of the DataTransformer class.
         """
-        for col in self.data.select_dtypes(include=['int64', 'float64']).columns:
+        numeric_cols = self.data.select_dtypes(include=['int64', 'float64']).columns
+        outlier_flags = pd.Series(0, index=self.data.index)
+
+        for col in numeric_cols:
             Q1 = self.data[col].quantile(0.25)
             Q3 = self.data[col].quantile(0.75)
             IQR = Q3 - Q1
             lower = Q1 - 1.5 * IQR
             upper = Q3 + 1.5 * IQR
 
-            self.data[f'is_outlier_{col}'] = ((self.data[col] < lower) | (self.data[col] > upper)).astype(int)
+            outlier_flags |= ((self.data[col] < lower) | (self.data[col] > upper))
 
-            self.data[col] = np.where(self.data[col] < lower, lower, self.data[col])
-            self.data[col] = np.where(self.data[col] > upper, upper, self.data[col])
+            self.data[col] = np.clip(self.data[col], lower, upper)
+
+        self.data['outlier_flag'] = outlier_flags.astype(int)
 
         if 'session_duration' in self.data.columns:
             self.data['session_duration'] = np.log1p(self.data['session_duration'])
