@@ -2,7 +2,7 @@ import sys
 import pandas as pd
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.etl.extract import download_dataset
 from src.etl.transform import DataTransformer

@@ -4,27 +4,34 @@ import shutil
 import pandas as pd
 import logging
 from pathlib import Path
-from load import save_data
+from src.etl.load import save_data
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from configs.paths import get_project_paths
 from src.utils.dataset_describer import describe_dataset
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+paths = get_project_paths()
+log_dir = paths['LOGS']
+log_dir.mkdir(parents=True, exist_ok=True)
+log_file = log_dir / "dataset_download.log"
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(console_formatter)
+
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 def download_dataset(slug: str, file_extension: str = ".csv") -> list[Path]:
-    """
-    Downloads a dataset from Kaggle and saves the files to the 'data/raw' directory.
-
-    Args:
-        slug: The slug of the dataset to download.
-        file_extension: The file extension of the files to download (default: .csv).
-
-    Returns:
-        A list of Paths pointing to the saved files.
-    """
     paths = get_project_paths()
     raw_dir = paths['RAW']
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -69,6 +76,8 @@ def download_dataset(slug: str, file_extension: str = ".csv") -> list[Path]:
 
     return saved_files
 
-
 if __name__ == "__main__":
-    download_dataset("dnkumars/cybersecurity-intrusion-detection-dataset", file_extension=".csv")
+    download_dataset(
+        "dnkumars/cybersecurity-intrusion-detection-dataset",
+        file_extension=".csv"
+    )

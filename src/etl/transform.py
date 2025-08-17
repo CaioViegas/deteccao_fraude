@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import unicodedata
 import logging
-from load import save_data
+from src.etl.load import save_data
 from pathlib import Path
 from sklearn.impute import KNNImputer
 from typing import Dict
@@ -14,8 +14,25 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from configs.paths import get_project_paths
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log_dir = Path(__file__).resolve().parent.parent.parent / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+log_file = log_dir / "data_transformer.log"
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+if not logger.hasHandlers():
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
 
 class DataTransformer:
     def __init__(self, data: pd.DataFrame, knn_neighbors: int = 5):
@@ -365,9 +382,3 @@ class DataTransformer:
 
         return self.data
     
-if __name__ == "__main__":
-    paths = get_project_paths()
-    raw_dir = paths['RAW']
-    df = pd.read_csv(raw_dir / "cybersecurity_intrusion_data.csv")
-    transformer = DataTransformer(df)
-    transformer.transform()

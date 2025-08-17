@@ -4,29 +4,26 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Union
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+paths = Path(__file__).resolve().parent.parent.parent / "logs"
+paths.mkdir(parents=True, exist_ok=True)
+log_file = paths / "save_data.log"
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 def save_data(df: pd.DataFrame, save_dir: Union[str, Path], base_filename: str = "data", formats: Optional[Dict[str, Dict]] = None, sqlite_table: str = "data_table", timestamp: bool = False) -> Dict[str, Path]:
-    """
-    Saves DataFrame to multiple formats with automatic extension handling for compression.
-
-    Args:
-        df: DataFrame to save
-        save_dir: Output directory path
-        base_filename: Base filename without extension
-        formats: Dictionary with format-specific options. Defaults to:
-            {
-                "csv": {"index": False, "compression": "gzip"},
-                "parquet": {"index": False, "compression": "snappy"},
-                "sqlite": {"if_exists": "replace"}
-            }
-        sqlite_table: Table name for SQLite
-        timestamp: Whether to append timestamp to filename
-
-    Returns:
-        Dictionary of {"format": path} for saved files
-    """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     
